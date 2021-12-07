@@ -11,7 +11,9 @@ test-unit:
 	@cargo test --lib
 # run specific tests: cargo test --lib <testname>  -- --nocapture
 
-
+build-doc:
+	cargo doc
+	
 build:
 # more about flags: https://github.com/near-examples/simulation-testing#gotchas
 # env setting instruments cargo to optimize the the build for size (link-args=-s)

@@ -1,4 +1,4 @@
-/// Cheddar Token
+/// Test Token
 ///
 /// Functionality:
 /// - No account storage complexity - Since NEAR slashed storage price by 10x
@@ -58,10 +58,10 @@ impl Contract {
     pub fn new(owner_id: AccountId) -> Self {
         let m = FungibleTokenMetadata {
             spec: FT_METADATA_SPEC.to_string(),
-            name: "Cheddar".to_string(),
-            symbol: "Cheddar".to_string(),
+            name: "TestToken".to_string(),
+            symbol: "TestToken".to_string(),
             icon: Some(String::from(
-                r###"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 56 56"><style>.a{fill:#F4C647;}.b{fill:#EEAF4B;}</style><path d="M45 19.5v5.5l4.8 0.6 0-11.4c-0.1-3.2-11.2-6.7-24.9-6.7 -13.7 0-24.8 3.6-24.9 6.7L0 32.5c0 3.2 10.7 7.1 24.5 7.1 0.2 0 0.3 0 0.5 0V21.5l-4.7-7.2L45 19.5z" class="a"/><path d="M25 31.5v-10l-4.7-7.2L45 19.5v5.5l-14-1.5v10C31 33.5 25 31.5 25 31.5z" fill="#F9E295"/><path d="M24.9 7.5C11.1 7.5 0 11.1 0 14.3s10.7 7.2 24.5 7.2c0.2 0 0.3 0 0.5 0l-4.7-7.2 25 5.2c2.8-0.9 4.4-4 4.4-5.2C49.8 11.1 38.6 7.5 24.9 7.5z" class="b"/><path d="M36 29v19.6c8.3 0 15.6-1 20-2.5V26.5L31 23.2 36 29z" class="a"/><path d="M31 23.2l5 5.8c8.2 0 15.6-1 19.9-2.5L31 23.2z" class="b"/><polygon points="36 29 36 48.5 31 42.5 31 23.2 " fill="#FCDF76"/></svg>"###,
+                r###"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 480" shape-rendering="geometricPrecision" text-rendering="geometricPrecision"><text id="elhgu9kHpZq2" dx="0" dy="0" font-family="&quot;Roboto&quot;" font-size="28" font-weight="400" transform="matrix(11.458273 0 0 11.458216 78.274646 351.313159)" fill="rgb(0,0,0)" stroke="none" stroke-width="0"><tspan id="elhgu9kHpZq3" y="0" font-weight="400" stroke-width="0"><![CDATA[T.T. ]]></tspan></text><style><![CDATA[@font-face {font-family: 'Roboto';font-style: normal;font-weight: 400; format('truetype');}]]></style></svg>"###,
             )),
             reference: None,
             reference_hash: None,
@@ -90,7 +90,7 @@ impl Contract {
     pub fn ft_mint(&mut self, receiver_id: &AccountId, amount: U128String, memo: Option<String>) {
         assert_one_yocto();
         log!(
-            "Minting {} CHEDDAR to {}, memo: {}",
+            "Minting {} TestToken to {}, memo: {}",
             amount.0,
             receiver_id,
             if let Some(m) = memo {

@@ -10,8 +10,6 @@ pub const ONE_YOCTO: Balance = 1;
 
 /// one second in nanoseconds
 pub const SECOND: u64 = 1_000_000_000;
-/// round duration in seconds
-pub const ROUND: u64 = 60; // 1 minute
 
 const MILLI_NEAR: Balance = 1000_000000_000000_000000; // 1e21
 pub const NEAR_BALANCE: Balance = MILLI_NEAR * 50; // 0.05 NEAR

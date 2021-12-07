@@ -17,73 +17,14 @@ use crate::*;
 #[derive(BorshSerialize, BorshDeserialize)]
 #[cfg_attr(feature = "test", derive(Default, Clone))]
 pub struct Vault {
-    /// Contract.s value when the last ping was called and rewards calculated
-    pub s: Balance,
     /// amount of staking token locked in this vault
-    pub staked: Balance,
-    /// Amount of accumulated, not withdrawn rewards from staking;
-    pub rewards: Balance,
-}
-
-impl Vault {
-    /**
-    Update rewards for locked tokens in past epochs
-    returns total account rewards
-    Arguments:
-    `s`: Contract.s value
-    `round`: current round
-     */
-    pub fn ping(&mut self, s: u128, round: u64) -> u128 {
-        // note: the round counting stops at self.farming_end
-        // if farming didn't start, ignore the rewards update
-        if round == 0 {
-            return 0;
-        }
-        // ping in the same round
-        if self.s == s {
-            return self.rewards;
-        }
-
-        let farmed = self.staked * (s - self.s) / ACC_OVERFLOW;
-        self.rewards += farmed;
-
-        self.s = s;
-        return self.rewards;
-    }
+    pub staked: Balance
 }
 
 impl Contract {
     #[inline]
     pub(crate) fn get_vault(&self, account_id: &AccountId) -> Vault {
         self.vaults.get(account_id).expect(ERR10_NO_ACCOUNT)
-    }
-
-    pub(crate) fn ping_all(&mut self, v: &mut Vault) -> u128 {
-        let r = self.current_round();
-        self.ping_s(r);
-        v.ping(self.s, r)
-    }
-
-    /// updates the rewards accumulator
-    pub(crate) fn ping_s(&mut self, round: u64) {
-        let new_s = self.compute_s(round);
-        // we should advance with rounds if self.t is zero, otherwise we have a jump and
-        // not properly compute the accumulator.
-        if self.t == 0 || new_s != self.s {
-            self.s = new_s;
-            self.s_round = round;
-        }
-    }
-
-    /// computes the rewards accumulator.
-    /// NOTE: the current, optimized algorithm will not farm anything if
-    ///   `self.rate * 1e6 / self.t < 1`
-    pub(crate) fn compute_s(&self, round: u64) -> u128 {
-        // covers also when round == 0
-        if self.s_round == round || self.t == 0 {
-            return self.s;
-        }
-        self.s + u128::from(round - self.s_round) * self.rate * ACC_OVERFLOW / self.t
     }
 }
 
@@ -114,13 +55,10 @@ impl FungibleTokenReceiver for Contract {
         let sender_id: &AccountId = sender_id.as_ref();
         let mut v = self.get_vault(sender_id);
 
-        // firstly update the past rewards
-        self.ping_all(&mut v);
-
         log!("Staked, {} {}", amount.0, token);
         v.staked += amount.0;
         self.vaults.insert(sender_id, &v);
-        self.t += amount.0; // must be called after ping_s
+        self.total += amount.0;
 
         return PromiseOrValue::Value(U128(0));
     }
