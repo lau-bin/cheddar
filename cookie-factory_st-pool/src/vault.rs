@@ -45,6 +45,7 @@ impl FungibleTokenReceiver for Contract {
         msg: String,
     ) -> PromiseOrValue<U128> {
         self.assert_is_active();
+        self.assert_not_closed();
         let token = env::predecessor_account_id();
         assert!(
             token == self.staking_token,
@@ -74,6 +75,8 @@ impl StorageManagement for Contract {
         account_id: Option<ValidAccountId>,
         registration_only: Option<bool>,
     ) -> StorageBalance {
+        self.assert_is_active();
+        self.assert_not_closed();
         let amount: Balance = env::attached_deposit();
         let account_id = account_id
             .map(|a| a.into())
@@ -109,6 +112,9 @@ impl StorageManagement for Contract {
     /// When force == true it will close the account. Otherwise this is noop.
     fn storage_unregister(&mut self, force: Option<bool>) -> bool {
         self.assert_is_active();
+        if self.returnable == false {
+            self.assert_not_closed();
+        }
         if Some(true) == force {
             self.close();
             return true;

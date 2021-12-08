@@ -1,0 +1,51 @@
+#Unit tests, * means done
+
+create contract *
+
+unstake: *
+
+	not active *
+	closed & not returnable *
+	not enough balance *
+	if unstake all then check account is closed *
+	no account *
+	closed & returnable *
+	no deposit *
+close: *
+	no deposit *
+	not active *
+	closed & not returnable *
+	no account *
+
+withdraw_tokens: *
+	contract not closed *
+	contract is returnable *
+	not the owner *
+	
+ft_on_transfer: *
+	contract closed *
+	contract not active *
+	wrong token *
+	negative or 0 amount // tested 0 but cant test negative in rust
+	no account *
+
+storage_deposit: *
+	contract closed *
+	contract not active *
+	amount < minimum deposit *
+	0 balance if not registered *
+	
+storage_withdraw: *
+	should always panic *
+	
+storage_unregister: *
+	contract is inactive *
+	closed & not returnable *
+	closed & returnable *
+	
+set_closeing_date: *
+	not the owner*
+
+storage_balance_of: *
+	
+	

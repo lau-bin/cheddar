@@ -339,6 +339,7 @@ trait FungibleTokenResolver {
 mod tests {
     use near_sdk::test_utils::{accounts, VMContextBuilder};
     use near_sdk::{testing_env, Balance};
+    use near_sdk::{MockedBlockchain, ValidatorId};
 
     use super::*;
 

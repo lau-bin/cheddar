@@ -18,6 +18,7 @@ pub struct ContractParams {
     pub owner_id: AccountId,
     pub staked_token: AccountId,
     pub is_active: bool,
+    pub closeing_date: u64,
     pub total_staked: U128,
     /// Number of accounts currently registered.
     pub accounts_registered: u64,
