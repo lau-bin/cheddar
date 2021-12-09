@@ -1,5 +1,3 @@
-use std::convert::TryInto;
-
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::LookupMap;
 use near_sdk::json_types::{ValidAccountId, U128};
@@ -27,7 +25,7 @@ pub struct Contract {
     /// if farming is opened
     pub is_active: bool,
     /// date after when no more deposit operations are allowed
-    pub closeing_date: u64,
+    pub closing_date: u64,
     /// user vaults
     pub vaults: LookupMap<AccountId, Vault>,
     /// total amount of tokens deposited
@@ -49,7 +47,7 @@ impl Contract {
         staked_token: ValidAccountId,
         treasury: ValidAccountId,
         returnable: bool,
-        closeing_date: u64
+        closing_date: u64
     ) -> Self {
         Self {
             owner_id: owner_id.into(),
@@ -60,7 +58,7 @@ impl Contract {
             accounts_registered: 0,
             treasury: treasury.into(),
             returnable,
-            closeing_date
+            closing_date
         }
     }
 
@@ -72,7 +70,7 @@ impl Contract {
             owner_id: self.owner_id.clone(),
             staked_token: self.staking_token.clone(),
             is_active: self.is_active,
-            closeing_date: self.closeing_date,
+            closing_date: self.closing_date,
             total_staked: self.total.into(),
             accounts_registered: self.accounts_registered,
         }
@@ -182,9 +180,9 @@ impl Contract {
     }
 
     /// set the date after when deposit operations are not allowed 
-    pub fn set_closeing_date(&mut self, date: u64) {
+    pub fn set_closing_date(&mut self, date: u64) {
         self.assert_owner();
-        self.closeing_date = date;
+        self.closing_date = date;
     }
 
     /*****************
@@ -239,7 +237,7 @@ impl Contract {
     }
 
     #[private]
-    pub fn return_tokens_treasury_callback(&mut self, user: AccountId, amount: U128) {
+    pub fn return_tokens_treasury_callback(&mut self, amount: U128) {
         match env::promise_result(0) {
             PromiseResult::NotReady => unreachable!(),
 
@@ -278,7 +276,7 @@ impl Contract {
     }
 
     fn is_contract_closed(&self) -> bool{
-        Contract::get_epoch_millis() > self.closeing_date
+        Contract::get_epoch_millis() > self.closing_date
     }
 
     fn assert_not_closed(&self){
@@ -318,26 +316,26 @@ mod tests {
     }
 
     /// deposit_dec = size of deposit in e24 to set for the next transacton
-    fn setup_contract(
+    fn setup_contract<F: Fn(&VMContextBuilder) -> u64>(
         predecessor: ValidAccountId,
         deposit_dec: u128,
         returnable: bool,
-        closeing_date: u64
+        closing_date: F
     ) -> (VMContextBuilder, Contract) {
         let mut context = VMContextBuilder::new();
         testing_env!(context.build());
+        testing_env!(context
+            .predecessor_account_id(predecessor)
+            .attached_deposit((deposit_dec).into())
+            .block_timestamp(100_000_000_000_000_000u64)
+            .build());
         let contract = Contract::new(
             acc_owner(), // owner
             acc_staking(),
             acc_trasury(),
             returnable,
-            closeing_date
+            closing_date(&context)
         );
-        testing_env!(context
-            .predecessor_account_id(predecessor)
-            .attached_deposit((deposit_dec).into())
-            .block_timestamp(10000000)
-            .build());
         (context, contract)
     }
 
@@ -345,7 +343,7 @@ mod tests {
         testing_env!(ctx
             .attached_deposit(0)
             .predecessor_account_id(acc_staking())
-            .block_timestamp(10000000)
+            .block_timestamp(100_000_000_000_000_000u64)
             .build());
         ctr.ft_on_transfer(a.clone(), amount.into(), "transfer to pool".to_string());
     }
@@ -353,25 +351,29 @@ mod tests {
         testing_env!(ctx
             .attached_deposit(1)
             .predecessor_account_id(a.clone())
-            .block_timestamp(10000000)
+            .block_timestamp(100_000_000_000_000_000u64)
             .build());
         ctr.unstake(amount.into());
     }
     fn withdraw_to_treasury(ctx: &mut VMContextBuilder, ctr: &mut Contract){
         testing_env!(ctx
             .attached_deposit(0)
-            .block_timestamp(10000000)
+            .block_timestamp(100_000_000_000_000_000u64)
             .build());
         ctr.withdraw_tokens();
     }
 
-    fn get_next_year_epoch() -> u64{
-        Contract::get_epoch_millis() + 31556952000u64
+    fn get_next_year_epoch(ctx: &VMContextBuilder) -> u64{
+        get_time_millis(ctx) + 31556952000u64
+    }
+
+    fn get_time_millis(ctx: &VMContextBuilder) -> u64{
+        ctx.context.block_timestamp / SECOND
     }
 
     #[test]
     fn test_set_active() {
-        let (_, mut ctr) = setup_contract(acc_owner(), 5, false, get_next_year_epoch());
+        let (_, mut ctr) = setup_contract(acc_owner(), 5, false, |ctx |get_next_year_epoch(&ctx));
         assert_eq!(ctr.is_active, true);
         ctr.set_active(false);
         assert_eq!(ctr.is_active, false);
@@ -380,23 +382,23 @@ mod tests {
     #[test]
     #[should_panic(expected = "can only be called by the owner")]
     fn test_set_active_not_admin() {
-        let (_, mut ctr) = setup_contract(accounts(1), 0, false, get_next_year_epoch());
+        let (_, mut ctr) = setup_contract(accounts(1), 0, false, |ctx |get_next_year_epoch(&ctx));
         ctr.set_active(false);
     }
 
     #[test]
-    fn test_set_closeing_date() {
-        let (_, mut ctr) = setup_contract(acc_owner(), 5, false, 10_000);
-        assert_eq!(ctr.closeing_date, 10_000);
-        ctr.set_closeing_date(20_000);
-        assert_eq!(ctr.closeing_date, 20_000);
+    fn test_set_closing_date() {
+        let (_, mut ctr) = setup_contract(acc_owner(), 5, false, |ctx| 10_000);
+        assert_eq!(ctr.closing_date, 10_000);
+        ctr.set_closing_date(20_000);
+        assert_eq!(ctr.closing_date, 20_000);
     }
 
     #[test]
     #[should_panic(expected = "can only be called by the owner")]
-    fn test_set_closeing_date_not_admin() {
-        let (_, mut ctr) = setup_contract(accounts(1), 0, false, get_next_year_epoch());
-        ctr.set_closeing_date(get_next_year_epoch() + 10_000);
+    fn test_set_closing_date_not_admin() {
+        let (ctx, mut ctr) = setup_contract(accounts(1), 0, false, |ctx |get_next_year_epoch(&ctx));
+        ctr.set_closing_date(get_next_year_epoch(&ctx) + 10_000);
     }
 
     #[test]
@@ -404,7 +406,7 @@ mod tests {
         expected = "The attached deposit is less than the minimum storage balance (50000000000000000000000)"
     )]
     fn test_min_storage_deposit() {
-        let (mut ctx, mut ctr) = setup_contract(accounts(0), 0, false, get_next_year_epoch());
+        let (mut ctx, mut ctr) = setup_contract(accounts(0), 0, false, |ctx |get_next_year_epoch(&ctx));
         testing_env!(ctx.attached_deposit(NEAR_BALANCE / 4).build());
         ctr.storage_deposit(None, None);
     }
@@ -412,7 +414,7 @@ mod tests {
     #[test]
     fn test_storage_deposit() {
         let user = accounts(1);
-        let (mut ctx, mut ctr) = setup_contract(user.clone(), 0, false, get_next_year_epoch());
+        let (mut ctx, mut ctr) = setup_contract(user.clone(), 0, false, |ctx |get_next_year_epoch(&ctx));
 
         match ctr.storage_balance_of(user.clone()) {
             Some(_) => panic!("unregistered account must not have a balance"),
@@ -437,7 +439,7 @@ mod tests {
     #[should_panic(expected = "contract is not active")]
     fn test_storage_deposit_inactive() {
         let user = accounts(1);
-        let (mut ctx, mut ctr) = setup_contract(acc_owner(), 0, false, get_next_year_epoch());
+        let (mut ctx, mut ctr) = setup_contract(acc_owner(), 0, false, |ctx |get_next_year_epoch(&ctx));
         ctr.set_active(false);
         testing_env!(ctx.predecessor_account_id(user.clone()).build());
         testing_env!(ctx.attached_deposit(NEAR_BALANCE).build());
@@ -448,7 +450,7 @@ mod tests {
     #[should_panic(expected = "contract is closed")]
     fn test_storage_deposit_closed() {
         let user = accounts(1);
-        let (mut ctx, mut ctr) = setup_contract(user.clone(), 0, false, Contract::get_epoch_millis() - 10_00);
+        let (mut ctx, mut ctr) = setup_contract(user.clone(), 0, false, |ctx |get_time_millis(&ctx) - 1_000);
 
         testing_env!(ctx.attached_deposit(NEAR_BALANCE).build());
         ctr.storage_deposit(None, None);
@@ -457,7 +459,7 @@ mod tests {
     #[test]
     fn test_staking() {
         let user = accounts(1);
-        let (mut ctx, mut ctr) = setup_contract(user.clone(), 0, false, get_next_year_epoch());
+        let (mut ctx, mut ctr) = setup_contract(user.clone(), 0, false, |ctx |get_next_year_epoch(&ctx));
 
         // register an account
         testing_env!(ctx.attached_deposit(NEAR_BALANCE).build());
@@ -478,7 +480,7 @@ mod tests {
     #[should_panic(expected = "staked amount must be positive")]
     fn test_staking_nothing() {
         let user = accounts(1);
-        let (mut ctx, mut ctr) = setup_contract(user.clone(), 0, false, get_next_year_epoch());
+        let (mut ctx, mut ctr) = setup_contract(user.clone(), 0, false, |ctx |get_next_year_epoch(&ctx));
 
         // register an account
         testing_env!(ctx.attached_deposit(NEAR_BALANCE).build());
@@ -493,7 +495,7 @@ mod tests {
     #[should_panic(expected = "Only test-token token transfers are accepted")]
     fn test_staking_wrong_token() {
         let user = accounts(1);
-        let (mut ctx, mut ctr) = setup_contract(user.clone(), 0, false, get_next_year_epoch());
+        let (mut ctx, mut ctr) = setup_contract(user.clone(), 0, false, |ctx |get_next_year_epoch(&ctx));
 
         // register an account
         testing_env!(ctx.attached_deposit(NEAR_BALANCE).build());
@@ -504,7 +506,7 @@ mod tests {
         testing_env!(ctx
             .attached_deposit(0)
             .predecessor_account_id(accounts(4))
-            .block_timestamp(10000000)
+            .block_timestamp(100_000_000_000_000_000u64)
             .build());
         ctr.ft_on_transfer(user.clone(), (E24*1_000).into(), "transfer to pool".to_string());
     }
@@ -513,7 +515,7 @@ mod tests {
     #[should_panic(expected = "contract is not active")]
     fn test_stacking_ctr_not_active() {
         let user = accounts(1);
-        let (mut ctx, mut ctr) = setup_contract(acc_owner(), 0, false, get_next_year_epoch());
+        let (mut ctx, mut ctr) = setup_contract(acc_owner(), 0, false, |ctx |get_next_year_epoch(&ctx));
 
         ctr.set_active(false);
         testing_env!(ctx.predecessor_account_id(user.clone()).build());
@@ -531,7 +533,7 @@ mod tests {
     fn test_stacking_ctr_closed() {
         let user = accounts(1);
         let (mut ctx, mut ctr) = setup_contract(user.clone(), 0, false,
-         Contract::get_epoch_millis() - 10_000);
+         |ctx| get_time_millis(&ctx) - 10_000);
 
         // register an account
         testing_env!(ctx.attached_deposit(NEAR_BALANCE).build());
@@ -546,7 +548,7 @@ mod tests {
     #[should_panic(expected = "E10: account not found. Register the account.")]
     fn test_stake_inexistent_account() {
         let user = accounts(1);
-        let (mut ctx, mut ctr) = setup_contract(user.clone(), 0, false, get_next_year_epoch());
+        let (mut ctx, mut ctr) = setup_contract(user.clone(), 0, false, |ctx |get_next_year_epoch(&ctx));
 
         // ------------------------------------------------
         // stake
@@ -556,7 +558,7 @@ mod tests {
     #[test]
     fn test_unstake() {
         let user = accounts(1);
-        let (mut ctx, mut ctr) = setup_contract(user.clone(), 0, false, get_next_year_epoch());
+        let (mut ctx, mut ctr) = setup_contract(user.clone(), 0, false, |ctx |get_next_year_epoch(&ctx));
 
         // register an account
         testing_env!(ctx.attached_deposit(NEAR_BALANCE).build());
@@ -576,7 +578,7 @@ mod tests {
     #[should_panic(expected = "Requires attached deposit of exactly 1 yoctoNEAR")]
     fn test_unstake_no_deposit() {
         let user = accounts(1);
-        let (mut ctx, mut ctr) = setup_contract(user.clone(), 0, false, get_next_year_epoch());
+        let (mut ctx, mut ctr) = setup_contract(user.clone(), 0, false, |ctx |get_next_year_epoch(&ctx));
 
         // register an account
         testing_env!(ctx.attached_deposit(NEAR_BALANCE).build());
@@ -589,7 +591,7 @@ mod tests {
         // unstake with no deposit (yoctonear)
         testing_env!(ctx
             .attached_deposit(0)
-            .block_timestamp(10000000)
+            .block_timestamp(100_000_000_000_000_000u64)
             .build());
         ctr.unstake((E24*1_000).into());
     }
@@ -598,7 +600,7 @@ mod tests {
     #[should_panic(expected = "E30: not enough staked tokens")]
     fn test_unstake_more_than_balance() {
         let user = accounts(1);
-        let (mut ctx, mut ctr) = setup_contract(user.clone(), 0, false, get_next_year_epoch());
+        let (mut ctx, mut ctr) = setup_contract(user.clone(), 0, false, |ctx |get_next_year_epoch(&ctx));
 
         // register an account
         testing_env!(ctx.attached_deposit(NEAR_BALANCE).build());
@@ -615,7 +617,7 @@ mod tests {
     #[test]
     fn test_unstake_all() {
         let user = accounts(1);
-        let (mut ctx, mut ctr) = setup_contract(user.clone(), 0, false, get_next_year_epoch());
+        let (mut ctx, mut ctr) = setup_contract(user.clone(), 0, false, |ctx |get_next_year_epoch(&ctx));
 
         // register an account
         testing_env!(ctx.attached_deposit(NEAR_BALANCE).build());
@@ -639,7 +641,7 @@ mod tests {
     #[should_panic(expected = "contract is not active")]
     fn test_unstake_when_not_active() {
         let user = accounts(1);
-        let (mut ctx, mut ctr) = setup_contract(user.clone(), 0, false, get_next_year_epoch());
+        let (mut ctx, mut ctr) = setup_contract(user.clone(), 0, false, |ctx |get_next_year_epoch(&ctx));
 
         // register an account
         testing_env!(ctx.attached_deposit(NEAR_BALANCE).build());
@@ -661,7 +663,7 @@ mod tests {
     #[should_panic(expected = "contract is closed")]
     fn test_unstake_when_closed_not_returnable() {
         let user = accounts(1);
-        let (mut ctx, mut ctr) = setup_contract(user.clone(), 0, false, get_next_year_epoch());
+        let (mut ctx, mut ctr) = setup_contract(user.clone(), 0, false, |ctx |get_next_year_epoch(&ctx));
 
         // register an account
         testing_env!(ctx.attached_deposit(NEAR_BALANCE).build());
@@ -672,7 +674,7 @@ mod tests {
 
         testing_env!(ctx.predecessor_account_id(acc_owner()).build());
         // set closing date in the past
-        ctr.set_closeing_date(Contract::get_epoch_millis() - 10_000);
+        ctr.set_closing_date(get_time_millis(&ctx) - 10_000);
         testing_env!(ctx.predecessor_account_id(user.clone()).build());
 
         // ------------------------------------------------
@@ -683,7 +685,7 @@ mod tests {
     #[test]
     fn test_unstake_when_closed_returnable() {
         let user = accounts(1);
-        let (mut ctx, mut ctr) = setup_contract(user.clone(), 0, true, get_next_year_epoch());
+        let (mut ctx, mut ctr) = setup_contract(user.clone(), 0, true, |ctx |get_next_year_epoch(&ctx));
 
         // register an account
         testing_env!(ctx.attached_deposit(NEAR_BALANCE).build());
@@ -694,7 +696,7 @@ mod tests {
 
         testing_env!(ctx.predecessor_account_id(acc_owner()).build());
         // set closing date in the past
-        ctr.set_closeing_date(Contract::get_epoch_millis() - 10_000);
+        ctr.set_closing_date(get_time_millis(&ctx) - 10_000);
         testing_env!(ctx.predecessor_account_id(user.clone()).build());
 
         // ------------------------------------------------
@@ -708,7 +710,7 @@ mod tests {
     #[should_panic(expected = "E10: account not found. Register the account.")]
     fn test_unstake_inexistent_account() {
         let user = accounts(1);
-        let (mut ctx, mut ctr) = setup_contract(user.clone(), 0, false, get_next_year_epoch());
+        let (mut ctx, mut ctr) = setup_contract(user.clone(), 0, false, |ctx |get_next_year_epoch(&ctx));
 
         // ------------------------------------------------
         // unstake
@@ -720,7 +722,7 @@ mod tests {
     fn test_withdraw_to_treasury_when_returnable(){
         let user = accounts(1);
         let user_2 = accounts(2);
-        let (mut ctx, mut ctr) = setup_contract(user.clone(), 0, true, get_next_year_epoch());
+        let (mut ctx, mut ctr) = setup_contract(user.clone(), 0, true, |ctx |get_next_year_epoch(&ctx));
         
         // register an account
         testing_env!(ctx.attached_deposit(NEAR_BALANCE).build());
@@ -747,8 +749,7 @@ mod tests {
     #[should_panic(expected = "can only be called by the owner")]
     fn test_withdraw_to_treasury_not_owner(){
         let user = accounts(1);
-        let user_2 = accounts(2);
-        let (mut ctx, mut ctr) = setup_contract(user.clone(), 0, false, Contract::get_epoch_millis() - 10_000);
+        let (mut ctx, mut ctr) = setup_contract(user.clone(), 0, false, |ctx| get_time_millis(&ctx) - 10_000);
 
         // withdraw all tokens to treasury account
         withdraw_to_treasury(&mut ctx, &mut ctr);
@@ -759,7 +760,7 @@ mod tests {
     fn test_withdraw_to_treasury_not_closed(){
         let user = accounts(1);
         let user_2 = accounts(2);
-        let (mut ctx, mut ctr) = setup_contract(user.clone(), 0, false, get_next_year_epoch());
+        let (mut ctx, mut ctr) = setup_contract(user.clone(), 0, false, |ctx |get_next_year_epoch(&ctx));
         
         // register an account
         testing_env!(ctx.attached_deposit(NEAR_BALANCE).build());
@@ -786,7 +787,7 @@ mod tests {
     fn test_withdraw_to_treasury(){
         let user = accounts(1);
         let user_2 = accounts(2);
-        let (mut ctx, mut ctr) = setup_contract(user.clone(), 0, false, get_next_year_epoch());
+        let (mut ctx, mut ctr) = setup_contract(user.clone(), 0, false, |ctx |get_next_year_epoch(&ctx));
         
         // register an account
         testing_env!(ctx.attached_deposit(NEAR_BALANCE).build());
@@ -804,7 +805,7 @@ mod tests {
         stake(&mut ctx, &mut ctr, &user_2, E24*1_000);
 
         testing_env!(ctx.predecessor_account_id(acc_owner()).build());
-        ctr.set_closeing_date(Contract::get_epoch_millis() - 10_000);
+        ctr.set_closing_date(get_time_millis(&ctx) - 10_000);
 
         // withdraw all tokens to treasury account
         withdraw_to_treasury(&mut ctx, &mut ctr);
@@ -814,7 +815,7 @@ mod tests {
     #[should_panic(expected = "Storage withdraw not possible, close the account instead")]
     fn test_storage_withdraw(){
         let user = accounts(1);
-        let (mut ctx, mut ctr) = setup_contract(user.clone(), 0, false, get_next_year_epoch());
+        let (mut ctx, mut ctr) = setup_contract(user.clone(), 0, false, |ctx |get_next_year_epoch(&ctx));
 
         // register an account
         testing_env!(ctx.attached_deposit(NEAR_BALANCE).build());
@@ -827,7 +828,7 @@ mod tests {
         // try withdraw
         testing_env!(ctx
             .attached_deposit(0)
-            .block_timestamp(10000000)
+            .block_timestamp(100_000_000_000_000_000u64)
             .build());
         ctr.storage_withdraw(Some((E24*1_000).into()));
     }
@@ -835,7 +836,7 @@ mod tests {
     #[test]
     fn test_storage_unregister_force(){
         let user = accounts(1);
-        let (mut ctx, mut ctr) = setup_contract(user.clone(), 0, true, get_next_year_epoch());
+        let (mut ctx, mut ctr) = setup_contract(user.clone(), 0, true, |ctx |get_next_year_epoch(&ctx));
 
         // register an account
         testing_env!(ctx.attached_deposit(NEAR_BALANCE).build());
@@ -849,7 +850,7 @@ mod tests {
         testing_env!(ctx
             .attached_deposit(1)
             .predecessor_account_id(user.clone())
-            .block_timestamp(10000000)
+            .block_timestamp(100_000_000_000_000_000u64)
             .build());
         ctr.storage_unregister(Some(true));
 
@@ -864,7 +865,7 @@ mod tests {
     #[should_panic(expected = "Requires attached deposit of exactly 1 yoctoNEAR")]
     fn test_storage_unregister_force_no_deposit(){
         let user = accounts(1);
-        let (mut ctx, mut ctr) = setup_contract(user.clone(), 0, true, get_next_year_epoch());
+        let (mut ctx, mut ctr) = setup_contract(user.clone(), 0, true, |ctx |get_next_year_epoch(&ctx));
 
         // register an account
         testing_env!(ctx.attached_deposit(NEAR_BALANCE).build());
@@ -877,7 +878,7 @@ mod tests {
         // try unregister
         testing_env!(ctx
             .attached_deposit(0)
-            .block_timestamp(10000000)
+            .block_timestamp(100_000_000_000_000_000u64)
             .build());
         ctr.storage_unregister(Some(true));
     }
@@ -886,7 +887,7 @@ mod tests {
     #[should_panic(expected = "contract is not active")]
     fn test_storage_unregister_not_active(){
         let user = accounts(1);
-        let (mut ctx, mut ctr) = setup_contract(user.clone(), 0, true, get_next_year_epoch());
+        let (mut ctx, mut ctr) = setup_contract(user.clone(), 0, true, |ctx |get_next_year_epoch(&ctx));
 
         // register an account
         testing_env!(ctx.attached_deposit(NEAR_BALANCE).build());
@@ -902,7 +903,7 @@ mod tests {
         testing_env!(ctx
             .attached_deposit(1)
             .predecessor_account_id(user.clone())
-            .block_timestamp(10000000)
+            .block_timestamp(100_000_000_000_000_000u64)
             .build());
         ctr.storage_unregister(Some(true));
     }
@@ -911,7 +912,7 @@ mod tests {
     #[should_panic(expected = "contract is closed")]
     fn test_storage_unregister_closed_not_returnable(){
         let user = accounts(1);
-        let (mut ctx, mut ctr) = setup_contract(user.clone(), 0, false, get_next_year_epoch());
+        let (mut ctx, mut ctr) = setup_contract(user.clone(), 0, false, |ctx |get_next_year_epoch(&ctx));
 
         // register an account
         testing_env!(ctx.attached_deposit(NEAR_BALANCE).build());
@@ -921,13 +922,13 @@ mod tests {
         stake(&mut ctx, &mut ctr, &user, E24*2_000);
 
         testing_env!(ctx.predecessor_account_id(acc_owner()).build());
-        ctr.set_closeing_date(Contract::get_epoch_millis() - 10_000);
+        ctr.set_closing_date(get_time_millis(&ctx) - 10_000);
         // ------------------------------------------------
         // try unregister
         testing_env!(ctx
             .attached_deposit(1)
             .predecessor_account_id(user.clone())
-            .block_timestamp(10000000)
+            .block_timestamp(100_000_000_000_000_000u64)
             .build());
         ctr.storage_unregister(Some(true));
     }
@@ -935,7 +936,7 @@ mod tests {
     #[test]
     fn test_storage_unregister_closed_returnable(){
         let user = accounts(1);
-        let (mut ctx, mut ctr) = setup_contract(user.clone(), 0, true, get_next_year_epoch());
+        let (mut ctx, mut ctr) = setup_contract(user.clone(), 0, true, |ctx |get_next_year_epoch(&ctx));
 
         // register an account
         testing_env!(ctx.attached_deposit(NEAR_BALANCE).build());
@@ -945,13 +946,13 @@ mod tests {
         stake(&mut ctx, &mut ctr, &user, E24*2_000);
 
         testing_env!(ctx.predecessor_account_id(acc_owner()).build());
-        ctr.set_closeing_date(Contract::get_epoch_millis() - 10_000);
+        ctr.set_closing_date(get_time_millis(&ctx) - 10_000);
         // ------------------------------------------------
         // try unregister
         testing_env!(ctx
             .attached_deposit(1)
             .predecessor_account_id(user.clone())
-            .block_timestamp(10000000)
+            .block_timestamp(100_000_000_000_000_000u64)
             .build());
         ctr.storage_unregister(Some(true));
 
@@ -965,7 +966,7 @@ mod tests {
     #[test]
     fn test_close(){
         let user = accounts(1);
-        let (mut ctx, mut ctr) = setup_contract(user.clone(), 0, true, get_next_year_epoch());
+        let (mut ctx, mut ctr) = setup_contract(user.clone(), 0, true, |ctx |get_next_year_epoch(&ctx));
 
         // register an account
         testing_env!(ctx.attached_deposit(NEAR_BALANCE).build());
@@ -979,7 +980,7 @@ mod tests {
         testing_env!(ctx
             .attached_deposit(1)
             .predecessor_account_id(user.clone())
-            .block_timestamp(10000000)
+            .block_timestamp(100_000_000_000_000_000u64)
             .build());
         ctr.close();
 
@@ -994,7 +995,7 @@ mod tests {
     #[should_panic(expected = "Requires attached deposit of exactly 1 yoctoNEAR")]
     fn test_close_no_deposit(){
         let user = accounts(1);
-        let (mut ctx, mut ctr) = setup_contract(user.clone(), 0, true, get_next_year_epoch());
+        let (mut ctx, mut ctr) = setup_contract(user.clone(), 0, true, |ctx |get_next_year_epoch(&ctx));
 
         // register an account
         testing_env!(ctx.attached_deposit(NEAR_BALANCE).build());
@@ -1007,7 +1008,7 @@ mod tests {
         // try to close
         testing_env!(ctx
             .attached_deposit(0)
-            .block_timestamp(10000000)
+            .block_timestamp(100_000_000_000_000_000u64)
             .build());
         ctr.close();
     }
@@ -1016,7 +1017,7 @@ mod tests {
     #[should_panic(expected = "contract is not active")]
     fn test_close_not_active(){
         let user = accounts(1);
-        let (mut ctx, mut ctr) = setup_contract(user.clone(), 0, true, get_next_year_epoch());
+        let (mut ctx, mut ctr) = setup_contract(user.clone(), 0, true, |ctx |get_next_year_epoch(&ctx));
 
         // register an account
         testing_env!(ctx.attached_deposit(NEAR_BALANCE).build());
@@ -1032,7 +1033,7 @@ mod tests {
         testing_env!(ctx
             .attached_deposit(1)
             .predecessor_account_id(user.clone())
-            .block_timestamp(10000000)
+            .block_timestamp(100_000_000_000_000_000u64)
             .build());
         ctr.close();
     }
@@ -1041,7 +1042,7 @@ mod tests {
     #[should_panic(expected = "contract is closed")]
     fn test_close_ctr_closed_not_returnable(){
         let user = accounts(1);
-        let (mut ctx, mut ctr) = setup_contract(user.clone(), 0, false, get_next_year_epoch());
+        let (mut ctx, mut ctr) = setup_contract(user.clone(), 0, false, |ctx |get_next_year_epoch(&ctx));
 
         // register an account
         testing_env!(ctx.attached_deposit(NEAR_BALANCE).build());
@@ -1051,13 +1052,13 @@ mod tests {
         stake(&mut ctx, &mut ctr, &user, E24*2_000);
 
         testing_env!(ctx.predecessor_account_id(acc_owner()).build());
-        ctr.set_closeing_date(Contract::get_epoch_millis() - 10_000);
+        ctr.set_closing_date(get_time_millis(&ctx) - 10_000);
         // ------------------------------------------------
         // try to close
         testing_env!(ctx
             .attached_deposit(1)
             .predecessor_account_id(user.clone())
-            .block_timestamp(10000000)
+            .block_timestamp(100_000_000_000_000_000u64)
             .build());
         ctr.close();
     }
@@ -1066,14 +1067,14 @@ mod tests {
     #[should_panic(expected = "E10: account not found. Register the account.")]
     fn test_close_inexistent_account(){
         let user = accounts(1);
-        let (mut ctx, mut ctr) = setup_contract(user.clone(), 0, true, get_next_year_epoch());
+        let (mut ctx, mut ctr) = setup_contract(user.clone(), 0, true, |ctx |get_next_year_epoch(&ctx));
 
         // ------------------------------------------------
         // try to close
         testing_env!(ctx
             .attached_deposit(1)
             .predecessor_account_id(user.clone())
-            .block_timestamp(10000000)
+            .block_timestamp(100_000_000_000_000_000u64)
             .build());
         ctr.close();
     }

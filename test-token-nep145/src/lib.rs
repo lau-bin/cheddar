@@ -339,7 +339,9 @@ trait FungibleTokenResolver {
 mod tests {
     use near_sdk::test_utils::{accounts, VMContextBuilder};
     use near_sdk::{testing_env, Balance};
-    use near_sdk::{MockedBlockchain, ValidatorId};
+    use near_sdk::{MockedBlockchain};
+    use near_contract_standards::storage_management::StorageManagement;
+
 
     use super::*;
 
@@ -393,9 +395,11 @@ mod tests {
 
         testing_env!(context
             .storage_usage(env::storage_usage())
-            .attached_deposit(1_000_000_000_000_000)
+            .attached_deposit(1120000000000000000000)
             .predecessor_account_id(accounts(1))
             .build());
+
+            contract.storage_deposit(None, None);
 
         testing_env!(context
             .storage_usage(env::storage_usage())
