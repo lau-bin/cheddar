@@ -1,5 +1,5 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::collections::LookupMap;
+use near_sdk::collections::UnorderedMap;
 use near_sdk::json_types::{ValidAccountId, U128};
 use near_sdk::{
     assert_one_yocto, env, log, near_bindgen, AccountId, PanicOnDefault, Promise, PromiseResult,
@@ -27,7 +27,7 @@ pub struct Contract {
     /// date after when no more deposit operations are allowed
     pub closing_date: u64,
     /// user vaults
-    pub vaults: LookupMap<AccountId, Vault>,
+    pub vaults: UnorderedMap<AccountId, Vault>,
     /// total amount of tokens deposited
     total: u128,
     /// total number of accounts currently registered.
@@ -53,7 +53,7 @@ impl Contract {
             owner_id: owner_id.into(),
             staking_token: staked_token.into(),
             is_active: true,
-            vaults: LookupMap::new(b"v".to_vec()),
+            vaults: UnorderedMap::new(b"v".to_vec()),
             total: 0,
             accounts_registered: 0,
             treasury: treasury.into(),
@@ -144,6 +144,16 @@ impl Contract {
         self.accounts_registered -= 1;
 
         self.return_tokens(a.clone(), v.staked.clone().into());
+    }
+
+    pub fn get_registered_accounts(&self, from_index: u64, limit: u64) -> Vec<String>{
+        let mut tmp = vec![];
+        let keys = self.vaults.keys_as_vector();
+        let end = std::cmp::min(from_index + limit, keys.len());
+        for i in from_index..end {
+            tmp.push(keys.get(i).unwrap());
+        }
+        tmp
     }
 
     // ******************* //

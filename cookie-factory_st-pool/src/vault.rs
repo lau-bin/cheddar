@@ -81,7 +81,7 @@ impl StorageManagement for Contract {
         let account_id = account_id
             .map(|a| a.into())
             .unwrap_or_else(|| env::predecessor_account_id());
-        if self.vaults.contains_key(&account_id) {
+        if let Some(_) = self.vaults.get(&account_id) {
             log!("The account is already registered, refunding the deposit");
             if amount > 0 {
                 Promise::new(env::predecessor_account_id()).transfer(amount);
@@ -134,7 +134,7 @@ impl StorageManagement for Contract {
     /// Otherwise None.
     fn storage_balance_of(&self, account_id: ValidAccountId) -> Option<StorageBalance> {
         let account_id: AccountId = account_id.into();
-        if self.vaults.contains_key(&account_id) {
+        if let Some(_) = self.vaults.get(&account_id) {
             return Some(storage_balance());
         }
         None
