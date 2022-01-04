@@ -73,6 +73,7 @@ impl Contract {
             closing_date: self.closing_date,
             total_staked: self.total.into(),
             accounts_registered: self.accounts_registered,
+            returnable: self.returnable
         }
     }
 
@@ -146,7 +147,8 @@ impl Contract {
         self.return_tokens(a.clone(), v.staked.clone().into());
     }
 
-    pub fn get_registered_accounts(&self, from_index: u64, limit: u64) -> Vec<String>{
+    pub fn get_registered_accounts(&mut self, from_index: u64, limit: u64) -> Vec<String>{
+        self.assert_owner();
         let mut tmp = vec![];
         let keys = self.vaults.keys_as_vector();
         let end = std::cmp::min(from_index + limit, keys.len());

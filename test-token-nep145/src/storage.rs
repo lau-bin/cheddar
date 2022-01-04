@@ -164,7 +164,12 @@ impl StorageManagement for Contract {
 
     fn storage_balance_of(&self, account_id: ValidAccountId) -> Option<StorageBalance> {
         if self.accounts.contains_key(account_id.as_ref()) {
-            Some(storage_balance())
+            let balance = self.accounts.get(account_id.as_ref()).unwrap().near.into();
+            let tokens = self.accounts.get(account_id.as_ref()).unwrap().token;
+            Some(StorageBalance {
+                total: balance,
+                available: if tokens > 0 {tokens.into()} else {0.into()}
+            })
         } else {
             None
         }

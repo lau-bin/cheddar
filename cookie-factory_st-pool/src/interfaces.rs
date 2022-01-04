@@ -22,4 +22,5 @@ pub struct ContractParams {
     pub total_staked: U128,
     /// Number of accounts currently registered.
     pub accounts_registered: u64,
+    pub returnable: bool
 }
